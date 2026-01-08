@@ -1,0 +1,17 @@
+{
+  "name": "discord-scripts",
+  "version": "1.0.0",
+  "description": "Personal automation scripts for privacy and data management",
+  "main": "index.js",
+  "scripts": {
+    "wipe-messages": "node scripts/wipe-discord-messages.js"
+  },
+  "keywords": ["discord", "privacy", "automation", "puppeteer"],
+  "author": "",
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "puppeteer": "^21.0.0",
+    "cli-progress": "^3.12.0",
+    "prompts": "^2.4.2"
+  }
+}
