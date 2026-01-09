@@ -15,6 +15,8 @@
 const puppeteer = require('puppeteer');
 const cliProgress = require('cli-progress');
 const prompts = require('prompts');
+const yargs = require('yargs/yargs');
+const { hideBin } = require('yargs/helpers');
 
 const DISCORD_URL = 'https://discord.com/channels/@me';
 
@@ -285,56 +287,112 @@ class DiscordMessageWiper {
 
 // Main execution
 (async () => {
+  // Parse CLI arguments
+  const argv = yargs(hideBin(process.argv))
+    .option('auto', {
+      alias: 'y',
+      type: 'boolean',
+      description: 'Skip all prompts and run automatically',
+      default: false
+    })
+    .option('channel', {
+      alias: 'c',
+      type: 'string',
+      description: 'Discord channel URL to process',
+      default: ''
+    })
+    .option('limit', {
+      alias: 'l',
+      type: 'number',
+      description: 'Maximum messages to delete (0 for unlimited)',
+      default: 0
+    })
+    .option('keep-open', {
+      alias: 'k',
+      type: 'boolean',
+      description: 'Keep browser open after completion',
+      default: false
+    })
+    .help()
+    .alias('help', 'h')
+    .example('$0 --auto', 'Delete all messages without prompts')
+    .example('$0 --auto --limit 100', 'Delete first 100 messages')
+    .example('$0 --auto --channel "https://discord.com/channels/..."', 'Delete messages in specific channel')
+    .argv;
+
   const wiper = new DiscordMessageWiper();
 
   try {
     await wiper.init();
     await wiper.waitForLogin();
 
-    // Prompt for server/channel URL
-    const response = await prompts({
-      type: 'text',
-      name: 'channelUrl',
-      message: 'Enter Discord channel URL (or press Enter to use current page):',
-      initial: ''
-    });
+    let channelUrl = argv.channel;
+    let limit = argv.limit;
+    let confirmed = argv.auto;
 
-    if (response.channelUrl && response.channelUrl.trim()) {
-      await wiper.navigateToServer(response.channelUrl.trim());
+    // Interactive mode (prompts)
+    if (!argv.auto) {
+      // Prompt for server/channel URL
+      const response = await prompts({
+        type: 'text',
+        name: 'channelUrl',
+        message: 'Enter Discord channel URL (or press Enter to use current page):',
+        initial: ''
+      });
+
+      channelUrl = response.channelUrl;
+
+      // Ask for message limit
+      const limitResponse = await prompts({
+        type: 'number',
+        name: 'limit',
+        message: 'Max messages to delete (0 for unlimited):',
+        initial: 0
+      });
+
+      limit = limitResponse.limit;
+
+      // Confirm before starting
+      const confirmResponse = await prompts({
+        type: 'confirm',
+        name: 'confirm',
+        message: '⚠️  This will WIPE and DELETE your messages. Continue?',
+        initial: false
+      });
+
+      confirmed = confirmResponse.confirm;
+    } else {
+      console.log('🤖 Running in AUTO mode (non-interactive)');
+      console.log(`   Channel: ${channelUrl || 'current page'}`);
+      console.log(`   Limit: ${limit === 0 ? 'unlimited' : limit}`);
+      console.log('   ⚠️  Starting in 3 seconds...\n');
+      await wiper.page.waitForTimeout(3000);
     }
 
-    // Ask for message limit
-    const limitResponse = await prompts({
-      type: 'number',
-      name: 'limit',
-      message: 'Max messages to delete (0 for unlimited):',
-      initial: 0
-    });
-
-    const limit = limitResponse.limit > 0 ? limitResponse.limit : null;
-
-    // Confirm before starting
-    const confirmResponse = await prompts({
-      type: 'confirm',
-      name: 'confirm',
-      message: '⚠️  This will WIPE and DELETE your messages. Continue?',
-      initial: false
-    });
-
-    if (!confirmResponse.confirm) {
+    if (!confirmed) {
       console.log('❌ Cancelled.');
       await wiper.cleanup();
       return;
     }
 
+    // Navigate to channel if provided
+    if (channelUrl && channelUrl.trim()) {
+      await wiper.navigateToServer(channelUrl.trim());
+    }
+
     // Start processing
-    const total = await wiper.processChannel(limit);
+    const finalLimit = limit > 0 ? limit : null;
+    const total = await wiper.processChannel(finalLimit);
     
     console.log(`\n✅ Complete! Processed ${total} messages.`);
-    console.log('🔒 Browser will remain open for 10 seconds...\n');
     
-    await wiper.page.waitForTimeout(10000);
-    await wiper.cleanup();
+    if (argv.keepOpen) {
+      console.log('🔒 Browser will remain open (use --no-keep-open to auto-close)...\n');
+    } else {
+      console.log('🔒 Browser will close in 5 seconds...\n');
+      await wiper.page.waitForTimeout(5000);
+      await wiper.cleanup();
+    }
 
   } catch (err) {
     console.error('❌ Error:', err);

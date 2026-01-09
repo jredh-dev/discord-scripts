@@ -30,7 +30,7 @@ npm install
 
 ## Usage
 
-### Wipe Discord Messages
+### Interactive Mode (with prompts)
 
 ```bash
 npm run wipe-messages
@@ -42,6 +42,25 @@ npm run wipe-messages
 3. Navigate to the channel you want to clean (or provide URL when prompted)
 4. Set a message limit (0 for unlimited)
 5. Confirm to start the wipe-delete process
+
+### Non-Interactive Mode (automation)
+
+```bash
+# Delete all messages without prompts
+npm run wipe-auto
+
+# Or use CLI arguments directly
+node scripts/wipe-discord-messages.js --auto
+node scripts/wipe-discord-messages.js --auto --limit 100
+node scripts/wipe-discord-messages.js --auto --channel "https://discord.com/channels/..."
+```
+
+**CLI Options:**
+- `--auto` / `-y` - Skip all prompts and run automatically
+- `--channel <url>` / `-c <url>` - Discord channel URL to process
+- `--limit <num>` / `-l <num>` - Maximum messages to delete (0 for unlimited)
+- `--keep-open` / `-k` - Keep browser open after completion
+- `--help` / `-h` - Show help
 
 **Example:**
 ```bash
