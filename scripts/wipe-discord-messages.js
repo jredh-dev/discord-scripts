@@ -66,8 +66,44 @@ class DiscordMessageWiper {
     console.log('\n⏳ Please log in to Discord in the browser window...');
     console.log('   Waiting for you to reach the main Discord interface...\n');
     
-    // Wait for the user to log in (check for DM list or server list)
-    await this.page.waitForSelector('[class*="guilds-"]', { timeout: 300000 }); // 5 min timeout
+    // Try multiple selectors to detect successful login
+    const loginSelectors = [
+      '[class*="sidebar-"]',           // Sidebar (most reliable)
+      '[class*="guilds"]',              // Server list
+      '[data-list-id="guildsnav"]',    // Guild navigation
+      '[class*="privateChannels-"]',   // DM list
+      '[aria-label="Servers"]',        // Servers button
+      '[class*="chat-"]'                // Chat area
+    ];
+    
+    console.log('   Trying multiple selectors to detect login...');
+    
+    let loginDetected = false;
+    const startTime = Date.now();
+    const timeout = 300000; // 5 minutes
+    
+    while (!loginDetected && (Date.now() - startTime) < timeout) {
+      for (const selector of loginSelectors) {
+        try {
+          const element = await this.page.$(selector);
+          if (element) {
+            console.log(`   ✓ Found element: ${selector}`);
+            loginDetected = true;
+            break;
+          }
+        } catch (err) {
+          // Continue trying
+        }
+      }
+      
+      if (!loginDetected) {
+        await this.page.waitForTimeout(1000); // Wait 1 second before retry
+      }
+    }
+    
+    if (!loginDetected) {
+      throw new Error('Login timeout - could not detect Discord UI after 5 minutes');
+    }
     
     console.log('✅ Login detected! Waiting 3 seconds for UI to stabilize...');
     await this.page.waitForTimeout(3000);
