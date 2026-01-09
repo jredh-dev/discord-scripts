@@ -50,15 +50,8 @@ class DiscordMessageWiper {
 
     this.page = await this.browser.newPage();
     
-    // Block images to speed things up
-    await this.page.setRequestInterception(true);
-    this.page.on('request', (req) => {
-      if (req.resourceType() === 'image' || req.resourceType() === 'media') {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
+    // Don't block images - needed for captcha to work properly
+    // Discord may present captcha during login which requires images to display
 
     console.log('🌐 Navigating to Discord...');
     await this.page.goto(DISCORD_URL, { waitUntil: 'networkidle2' });
