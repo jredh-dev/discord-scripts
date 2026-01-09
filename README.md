@@ -4,20 +4,53 @@ Personal automation scripts for privacy and data management on Discord.
 
 ## Scripts
 
-### 🗑️ wipe-discord-messages.js
+### 🌐 Browser Console Script (Recommended)
 
-Automate deletion of your Discord messages across servers and DMs. This script:
-1. **Wipes** each message (edits to blank space to remove from Discord's servers)
-2. **Deletes** the message completely
+**File:** `browser-scripts/wipe-discord-messages-console.js`
+
+The easiest way to delete your Discord messages - just paste into your browser console!
+
+**How to use:**
+1. Open Discord in your web browser
+2. Navigate to the channel/DM you want to clean
+3. Press **F12** (or Cmd+Option+I on Mac) to open Developer Tools
+4. Click the **Console** tab
+5. Copy the contents of `browser-scripts/wipe-discord-messages-console.js`
+6. Paste into the console and press **Enter**
+7. Watch as it automatically wipes and deletes your messages
 
 **Features:**
-- ✅ Browser automation (stays within Discord ToS)
+- ✅ No installation required
+- ✅ Works directly in your browser
+- ✅ No external tools or dependencies
+- ✅ Real-time progress logging
+- ✅ Automatic scrolling to find older messages
+- ✅ Wipe-then-delete (edits to blank, then removes)
+
+### 🤖 Puppeteer Automation Script
+
+**File:** `scripts/wipe-discord-messages.js`
+
+Automated browser script using Puppeteer (requires Node.js).
+
+**Features:**
+- ✅ Full automation with Puppeteer
 - ✅ Progress tracking with visual progress bar
 - ✅ Configurable message limits
+- ✅ CLI arguments for non-interactive mode
 - ✅ Processes messages across any channel/server/DM
-- ✅ Safe: keeps browser visible, requires manual login
 
 ## Installation
+
+### For Browser Console Script (Recommended)
+
+No installation needed! Just:
+1. Clone or download the repository
+2. Open `browser-scripts/wipe-discord-messages-console.js`
+3. Copy the contents
+4. Paste into Discord's browser console
+
+### For Puppeteer Script
 
 ```bash
 # Clone repository
