@@ -1,8 +1,8 @@
 /**
- * Discord Message Wipe-Delete Console Script
+ * Discord Message Delete Console Script
  * 
  * Copy and paste this entire script into Discord's browser console (F12 → Console tab)
- * to automatically wipe and delete all your messages in the current channel.
+ * to automatically delete all your messages in the current channel.
  * 
  * How to use:
  * 1. Open Discord in your browser
@@ -16,8 +16,8 @@
  */
 
 (async function() {
-  console.log('🚀 Discord Message Wiper - Starting...');
-  console.log('⚠️  This will wipe and delete ALL your messages in this channel.');
+  console.log('🚀 Discord Message Deleter - Starting...');
+  console.log('⚠️  This will delete ALL your messages in this channel.');
   console.log('⚠️  Press Ctrl+C in console to stop at any time.\n');
 
   let processed = 0;
@@ -40,24 +40,31 @@
     const userMessages = [];
 
     messages.forEach(msg => {
-      // Check if message has action buttons (indicates it's your message)
-      // Look for buttonContainer in various class formats
-      const hasActions = msg.querySelector('[class*="buttonContainer"]') || 
-                        msg.querySelector('[class*="buttonContainer-"]');
+      // Check if message has Edit button (only your messages have Edit)
+      // This is more reliable than checking for buttonContainer
+      const buttonContainer = msg.querySelector('[class*="buttonContainer"]') || 
+                              msg.querySelector('[class*="buttonContainer-"]');
       
-      // Get unique ID from either data attribute or element id
-      const msgId = msg.getAttribute('data-list-item-id') || msg.id;
-      
-      if (hasActions && msgId && !processedIds.has(msgId)) {
-        msg._uniqueId = msgId; // Store for later use
-        userMessages.push(msg);
+      if (buttonContainer) {
+        // Look for Edit button specifically
+        const hasEditButton = buttonContainer.querySelector('[aria-label="Edit"]');
+        
+        if (hasEditButton) {
+          // Get unique ID from either data attribute or element id
+          const msgId = msg.getAttribute('data-list-item-id') || msg.id;
+          
+          if (msgId && !processedIds.has(msgId)) {
+            msg._uniqueId = msgId; // Store for later use
+            userMessages.push(msg);
+          }
+        }
       }
     });
 
     return userMessages;
   };
 
-  const wipeAndDeleteMessage = async (messageElement) => {
+  const deleteMessage = async (messageElement) => {
     try {
       // Hover to show action buttons
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -68,89 +75,27 @@
       messageElement.dispatchEvent(mouseEnterEvent);
       await sleep(500);
 
-      // Find and click Edit button directly in hover bar (new UI)
-      let editButton = messageElement.querySelector('[aria-label="Edit"]');
+      // Click More button to access Delete
+      let moreButton = messageElement.querySelector('[aria-label="More"]');
       
-      // Fallback to class-based selector
-      if (!editButton) {
+      // Fallback selector
+      if (!moreButton) {
         const buttons = messageElement.querySelectorAll('[class*="hoverBarButton"]');
         for (const btn of buttons) {
-          if (btn.getAttribute('aria-label') === 'Edit') {
-            editButton = btn;
+          if (btn.getAttribute('aria-label') === 'More') {
+            moreButton = btn;
             break;
           }
         }
       }
       
-      // If no direct Edit button, try old UI flow (More → Edit menu item)
-      if (!editButton) {
-        const moreButton = messageElement.querySelector('[aria-label="More"]');
-        if (moreButton) {
-          moreButton.click();
-          await sleep(500);
-          
-          editButton = document.querySelector('[id^="message-actions-edit"]');
-          if (!editButton) {
-            const menuItems = document.querySelectorAll('[role="menuitem"]');
-            for (const item of menuItems) {
-              const text = item.textContent.trim();
-              if (text.includes('Edit')) {
-                editButton = item;
-                break;
-              }
-            }
-          }
-        }
-      }
-      
-      if (!editButton) {
-        console.log('❌ Could not find Edit button');
-        return false;
-      }
-      
-      editButton.click();
-      await sleep(500);
-
-      // Find text area and replace with space
-      const textArea = messageElement.querySelector('[class*="textArea-"][role="textbox"]');
-      if (textArea) {
-        // Clear and type space
-        textArea.focus();
-        textArea.textContent = ' ';
-        
-        // Trigger input event
-        const inputEvent = new Event('input', { bubbles: true });
-        textArea.dispatchEvent(inputEvent);
-        await sleep(300);
-
-        // Press Enter to save
-        const enterEvent = new KeyboardEvent('keydown', {
-          key: 'Enter',
-          code: 'Enter',
-          keyCode: 13,
-          bubbles: true
-        });
-        textArea.dispatchEvent(enterEvent);
-        await sleep(1000); // Wait for edit to save
-      }
-
-      // Now delete the message - scroll and hover again
-      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(300);
-      
-      const mouseEnterEvent2 = new MouseEvent('mouseenter', { bubbles: true });
-      messageElement.dispatchEvent(mouseEnterEvent2);
-      await sleep(500);
-
-      // Click More button to access Delete
-      const moreButton = messageElement.querySelector('[aria-label="More"]');
       if (!moreButton) {
-        console.log('❌ Could not find More button for delete');
+        console.log('❌ Could not find More button');
         return false;
       }
       
       moreButton.click();
-      await sleep(500);
+      await sleep(800); // Wait for menu to appear
 
       // Find delete button - try multiple selectors
       let deleteButton = document.querySelector('[id^="message-actions-delete"]');
@@ -242,7 +187,7 @@
       const msgId = msg._uniqueId || msg.id;
       console.log(`🗑️  Processing message ${msgId}...`);
       
-      const success = await wipeAndDeleteMessage(msg);
+      const success = await deleteMessage(msg);
       
       if (success) {
         processedIds.add(msgId);
