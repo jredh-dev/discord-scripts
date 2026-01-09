@@ -118,8 +118,33 @@
           deleteButton.click();
           await sleep(500);
 
-          // Confirm deletion
-          const confirmButton = document.querySelector('[type="submit"]');
+          // Confirm deletion - try multiple selectors for new and old Discord UI
+          let confirmButton = document.querySelector('[type="submit"]');
+          
+          // Fallback to new Discord button format with data-mana-component
+          if (!confirmButton) {
+            const buttons = document.querySelectorAll('[data-mana-component="button"]');
+            for (const btn of buttons) {
+              const text = btn.textContent.trim();
+              if (text === 'Delete' || text === 'Confirm') {
+                confirmButton = btn;
+                break;
+              }
+            }
+          }
+          
+          // Additional fallback for buttons with specific class patterns
+          if (!confirmButton) {
+            const buttons = document.querySelectorAll('button[class*="button"]');
+            for (const btn of buttons) {
+              const text = btn.textContent.trim();
+              if (text === 'Delete' || text === 'Confirm') {
+                confirmButton = btn;
+                break;
+              }
+            }
+          }
+          
           if (confirmButton) {
             confirmButton.click();
             await sleep(1000);
