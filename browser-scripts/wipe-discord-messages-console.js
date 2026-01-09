@@ -40,24 +40,43 @@
     const userMessages = [];
 
     console.log(`🔍 Found ${messages.length} total messages`);
+    
+    let debugCount = 0;
 
     messages.forEach(msg => {
-      // Check if message has Edit button (only your messages have Edit)
-      // Look for buttonContainer
-      const buttonContainer = msg.querySelector('[class*="buttonContainer"]');
+      // Trigger hover to make buttons visible
+      const mouseEnterEvent = new MouseEvent('mouseenter', { bubbles: true });
+      msg.dispatchEvent(mouseEnterEvent);
       
-      if (buttonContainer) {
-        // Look for Edit button by aria-label (works even when hidden)
-        const hasEditButton = buttonContainer.querySelector('[aria-label="Edit"]');
-        
-        if (hasEditButton) {
-          // Get unique ID from either data attribute or element id
-          const msgId = msg.getAttribute('data-list-item-id') || msg.id;
-          
-          if (msgId && !processedIds.has(msgId)) {
-            msg._uniqueId = msgId; // Store for later use
-            userMessages.push(msg);
+      // Check if message has Edit button (only your messages have Edit)
+      // Try multiple selectors for the Edit button
+      let hasEditButton = msg.querySelector('[aria-label="Edit"]');
+      
+      // Also check within any nested containers
+      if (!hasEditButton) {
+        const allButtons = msg.querySelectorAll('[role="button"]');
+        for (const btn of allButtons) {
+          if (btn.getAttribute('aria-label') === 'Edit') {
+            hasEditButton = btn;
+            break;
           }
+        }
+      }
+      
+      // Debug: log first few messages
+      if (debugCount < 3) {
+        const msgId = msg.getAttribute('data-list-item-id') || msg.id;
+        console.log(`  Debug msg ${debugCount + 1}: ${msgId?.slice(0, 40)}... hasEdit=${!!hasEditButton}`);
+        debugCount++;
+      }
+      
+      if (hasEditButton) {
+        // Get unique ID from either data attribute or element id
+        const msgId = msg.getAttribute('data-list-item-id') || msg.id;
+        
+        if (msgId && !processedIds.has(msgId)) {
+          msg._uniqueId = msgId; // Store for later use
+          userMessages.push(msg);
         }
       }
     });
@@ -105,10 +124,25 @@
       // Fallback to menu items
       if (!deleteButton) {
         const menuItems = document.querySelectorAll('[role="menuitem"]');
+        console.log(`  Found ${menuItems.length} menu items`);
         for (const item of menuItems) {
           const text = item.textContent.trim();
+          console.log(`    Menu item: "${text.slice(0, 30)}"`);
           if (text.includes('Delete') || item.getAttribute('aria-label') === 'Delete Message') {
             deleteButton = item;
+            break;
+          }
+        }
+      }
+      
+      // Additional fallback - look for any element with Delete text
+      if (!deleteButton) {
+        const allElements = document.querySelectorAll('[role="menuitem"], [class*="item"], button');
+        for (const el of allElements) {
+          const text = el.textContent.trim();
+          if (text === 'Delete Message' || text === 'Delete') {
+            deleteButton = el;
+            console.log(`  Found delete via text search: "${text}"`);
             break;
           }
         }
