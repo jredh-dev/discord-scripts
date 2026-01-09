@@ -35,14 +35,21 @@
   };
 
   const findUserMessages = () => {
-    // Find all message elements
-    const messages = document.querySelectorAll('[id^="chat-messages-"]');
+    // Find all message elements - support both old and new Discord UI
+    const messages = document.querySelectorAll('[data-list-item-id^="chat-messages"], [id^="chat-messages-"]');
     const userMessages = [];
 
     messages.forEach(msg => {
       // Check if message has action buttons (indicates it's your message)
-      const hasActions = msg.querySelector('[class*="buttonContainer-"]');
-      if (hasActions && !processedIds.has(msg.id)) {
+      // Look for buttonContainer in various class formats
+      const hasActions = msg.querySelector('[class*="buttonContainer"]') || 
+                        msg.querySelector('[class*="buttonContainer-"]');
+      
+      // Get unique ID from either data attribute or element id
+      const msgId = msg.getAttribute('data-list-item-id') || msg.id;
+      
+      if (hasActions && msgId && !processedIds.has(msgId)) {
+        msg._uniqueId = msgId; // Store for later use
         userMessages.push(msg);
       }
     });
@@ -59,101 +66,151 @@
       // Simulate hover
       const mouseEnterEvent = new MouseEvent('mouseenter', { bubbles: true });
       messageElement.dispatchEvent(mouseEnterEvent);
-      await sleep(300);
-
-      // Find and click "More" button (three dots)
-      const moreButton = messageElement.querySelector('[aria-label="More"]');
-      if (!moreButton) {
-        console.log('❌ Could not find More button');
-        return false;
-      }
-      moreButton.click();
       await sleep(500);
 
-      // Click "Edit" button
-      const editButton = document.querySelector('[id^="message-actions-edit"]');
-      if (editButton) {
-        editButton.click();
-        await sleep(500);
-
-        // Find text area and replace with space
-        const textArea = messageElement.querySelector('[class*="textArea-"][role="textbox"]');
-        if (textArea) {
-          // Clear and type space
-          textArea.focus();
-          textArea.textContent = ' ';
-          
-          // Trigger input event
-          const inputEvent = new Event('input', { bubbles: true });
-          textArea.dispatchEvent(inputEvent);
-          await sleep(300);
-
-          // Press Enter to save
-          const enterEvent = new KeyboardEvent('keydown', {
-            key: 'Enter',
-            code: 'Enter',
-            keyCode: 13,
-            bubbles: true
-          });
-          textArea.dispatchEvent(enterEvent);
-          await sleep(1000); // Wait for edit to save
+      // Find and click Edit button directly in hover bar (new UI)
+      let editButton = messageElement.querySelector('[aria-label="Edit"]');
+      
+      // Fallback to class-based selector
+      if (!editButton) {
+        const buttons = messageElement.querySelectorAll('[class*="hoverBarButton"]');
+        for (const btn of buttons) {
+          if (btn.getAttribute('aria-label') === 'Edit') {
+            editButton = btn;
+            break;
+          }
         }
       }
+      
+      // If no direct Edit button, try old UI flow (More → Edit menu item)
+      if (!editButton) {
+        const moreButton = messageElement.querySelector('[aria-label="More"]');
+        if (moreButton) {
+          moreButton.click();
+          await sleep(500);
+          
+          editButton = document.querySelector('[id^="message-actions-edit"]');
+          if (!editButton) {
+            const menuItems = document.querySelectorAll('[role="menuitem"]');
+            for (const item of menuItems) {
+              const text = item.textContent.trim();
+              if (text.includes('Edit')) {
+                editButton = item;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      if (!editButton) {
+        console.log('❌ Could not find Edit button');
+        return false;
+      }
+      
+      editButton.click();
+      await sleep(500);
 
-      // Now delete the message
+      // Find text area and replace with space
+      const textArea = messageElement.querySelector('[class*="textArea-"][role="textbox"]');
+      if (textArea) {
+        // Clear and type space
+        textArea.focus();
+        textArea.textContent = ' ';
+        
+        // Trigger input event
+        const inputEvent = new Event('input', { bubbles: true });
+        textArea.dispatchEvent(inputEvent);
+        await sleep(300);
+
+        // Press Enter to save
+        const enterEvent = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          bubbles: true
+        });
+        textArea.dispatchEvent(enterEvent);
+        await sleep(1000); // Wait for edit to save
+      }
+
+      // Now delete the message - scroll and hover again
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       await sleep(300);
       
       const mouseEnterEvent2 = new MouseEvent('mouseenter', { bubbles: true });
       messageElement.dispatchEvent(mouseEnterEvent2);
-      await sleep(300);
+      await sleep(500);
 
-      const moreButton2 = messageElement.querySelector('[aria-label="More"]');
-      if (moreButton2) {
-        moreButton2.click();
-        await sleep(500);
+      // Click More button to access Delete
+      const moreButton = messageElement.querySelector('[aria-label="More"]');
+      if (!moreButton) {
+        console.log('❌ Could not find More button for delete');
+        return false;
+      }
+      
+      moreButton.click();
+      await sleep(500);
 
-        const deleteButton = document.querySelector('[id^="message-actions-delete"]');
-        if (deleteButton) {
-          deleteButton.click();
-          await sleep(500);
-
-          // Confirm deletion - try multiple selectors for new and old Discord UI
-          let confirmButton = document.querySelector('[type="submit"]');
-          
-          // Fallback to new Discord button format with data-mana-component
-          if (!confirmButton) {
-            const buttons = document.querySelectorAll('[data-mana-component="button"]');
-            for (const btn of buttons) {
-              const text = btn.textContent.trim();
-              if (text === 'Delete' || text === 'Confirm') {
-                confirmButton = btn;
-                break;
-              }
-            }
-          }
-          
-          // Additional fallback for buttons with specific class patterns
-          if (!confirmButton) {
-            const buttons = document.querySelectorAll('button[class*="button"]');
-            for (const btn of buttons) {
-              const text = btn.textContent.trim();
-              if (text === 'Delete' || text === 'Confirm') {
-                confirmButton = btn;
-                break;
-              }
-            }
-          }
-          
-          if (confirmButton) {
-            confirmButton.click();
-            await sleep(1000);
-            return true;
+      // Find delete button - try multiple selectors
+      let deleteButton = document.querySelector('[id^="message-actions-delete"]');
+      
+      // Fallback to menu items
+      if (!deleteButton) {
+        const menuItems = document.querySelectorAll('[role="menuitem"]');
+        for (const item of menuItems) {
+          const text = item.textContent.trim();
+          if (text.includes('Delete') || item.getAttribute('aria-label') === 'Delete Message') {
+            deleteButton = item;
+            break;
           }
         }
       }
+      
+      if (!deleteButton) {
+        console.log('❌ Could not find Delete button');
+        return false;
+      }
+      
+      deleteButton.click();
+      await sleep(500);
 
-      return false;
+      // Confirm deletion - try multiple selectors for new and old Discord UI
+      let confirmButton = document.querySelector('[type="submit"]');
+      
+      // Fallback to new Discord button format with data-mana-component
+      if (!confirmButton) {
+        const buttons = document.querySelectorAll('[data-mana-component="button"]');
+        for (const btn of buttons) {
+          const text = btn.textContent.trim();
+          if (text === 'Delete' || text === 'Confirm') {
+            confirmButton = btn;
+            break;
+          }
+        }
+      }
+      
+      // Additional fallback for buttons with specific class patterns
+      if (!confirmButton) {
+        const buttons = document.querySelectorAll('button[class*="button"]');
+        for (const btn of buttons) {
+          const text = btn.textContent.trim();
+          if (text === 'Delete' || text === 'Confirm') {
+            confirmButton = btn;
+            break;
+          }
+        }
+      }
+      
+      if (!confirmButton) {
+        console.log('❌ Could not find confirmation button');
+        return false;
+      }
+      
+      confirmButton.click();
+      await sleep(1000);
+      return true;
+
     } catch (err) {
       console.error('❌ Error:', err.message);
       return false;
@@ -182,12 +239,13 @@
 
     // Process each message
     for (const msg of messages) {
-      console.log(`🗑️  Processing message ${msg.id}...`);
+      const msgId = msg._uniqueId || msg.id;
+      console.log(`🗑️  Processing message ${msgId}...`);
       
       const success = await wipeAndDeleteMessage(msg);
       
       if (success) {
-        processedIds.add(msg.id);
+        processedIds.add(msgId);
         processed++;
         console.log(`✅ Deleted message ${processed}`);
       } else {
