@@ -39,14 +39,15 @@
     const messages = document.querySelectorAll('[data-list-item-id^="chat-messages"], [id^="chat-messages-"]');
     const userMessages = [];
 
+    console.log(`🔍 Found ${messages.length} total messages`);
+
     messages.forEach(msg => {
       // Check if message has Edit button (only your messages have Edit)
-      // This is more reliable than checking for buttonContainer
-      const buttonContainer = msg.querySelector('[class*="buttonContainer"]') || 
-                              msg.querySelector('[class*="buttonContainer-"]');
+      // Look for buttonContainer
+      const buttonContainer = msg.querySelector('[class*="buttonContainer"]');
       
       if (buttonContainer) {
-        // Look for Edit button specifically
+        // Look for Edit button by aria-label (works even when hidden)
         const hasEditButton = buttonContainer.querySelector('[aria-label="Edit"]');
         
         if (hasEditButton) {
@@ -61,6 +62,7 @@
       }
     });
 
+    console.log(`✅ Found ${userMessages.length} user messages with Edit button`);
     return userMessages;
   };
 
