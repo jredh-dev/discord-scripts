@@ -78,9 +78,30 @@ npm run wipe-messages
 
 ### Non-Interactive Mode (automation)
 
+#### Search Mode (Recommended - Faster!)
+
+Use Discord's search feature to find all your messages in a server:
+
 ```bash
-# Delete all messages without prompts
-npm run wipe-auto
+# Search for all messages from a user in a server
+npm run wipe-auto -- --server "https://discord.com/channels/SERVER_ID/CHANNEL_ID" --username "YourUsername" --limit 0
+
+# Or use the command directly
+node scripts/wipe-discord-messages.js --auto --server "https://discord.com/channels/..." --username "YourUsername"
+```
+
+**Why Search Mode?**
+- ✅ **Much faster** - finds all your messages at once via search
+- ✅ **More complete** - Discord's search is comprehensive
+- ✅ **Less detectable** - fewer page loads and channel visits
+
+#### Channel Iteration Mode
+
+Process messages by iterating through a single channel:
+
+```bash
+# Delete all messages in a specific channel
+npm run wipe-auto -- --channel "https://discord.com/channels/..."
 
 # Or use CLI arguments directly
 node scripts/wipe-discord-messages.js --auto
@@ -90,7 +111,9 @@ node scripts/wipe-discord-messages.js --auto --channel "https://discord.com/chan
 
 **CLI Options:**
 - `--auto` / `-y` - Skip all prompts and run automatically
-- `--channel <url>` / `-c <url>` - Discord channel URL to process
+- `--server <url>` / `-s <url>` - Discord server URL for search mode
+- `--username <name>` / `-u <name>` - Your Discord username (required with --server)
+- `--channel <url>` / `-c <url>` - Discord channel URL for iteration mode
 - `--limit <num>` / `-l <num>` - Maximum messages to delete (0 for unlimited)
 - `--keep-open` / `-k` - Keep browser open after completion
 - `--help` / `-h` - Show help

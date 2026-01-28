@@ -110,6 +110,113 @@ class DiscordMessageWiper {
     await this.page.waitForTimeout(2000);
   }
 
+  async openSearchInServer(serverUrl) {
+    console.log(`🔍 Opening search in server...`);
+    
+    // Navigate to server
+    await this.page.goto(serverUrl, { waitUntil: 'networkidle2' });
+    await this.page.waitForTimeout(2000);
+    
+    // Open search with Ctrl+F (Cmd+F on Mac)
+    const isMac = process.platform === 'darwin';
+    await this.page.keyboard.down(isMac ? 'Meta' : 'Control');
+    await this.page.keyboard.press('F');
+    await this.page.keyboard.up(isMac ? 'Meta' : 'Control');
+    await this.page.waitForTimeout(1000);
+    
+    return true;
+  }
+
+  async searchForUserMessages(username) {
+    console.log(`🔎 Searching for messages from: ${username}`);
+    
+    // Type the search query: "from:username"
+    const searchQuery = `from:${username}`;
+    await this.page.keyboard.type(searchQuery);
+    await this.page.keyboard.press('Enter');
+    
+    // Wait for search results to load
+    console.log('⏳ Waiting for search results...');
+    await this.page.waitForTimeout(3000);
+    
+    return true;
+  }
+
+  async processSearchResults(maxMessages = null) {
+    console.log('\n🔍 Processing search results...\n');
+    
+    let totalProcessed = 0;
+    let consecutiveNoMessages = 0;
+    const maxConsecutiveNoMessages = 3;
+
+    const progressBar = new cliProgress.SingleBar({
+      format: 'Progress |{bar}| {value}/{total} messages wiped & deleted',
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+      hideCursor: true
+    });
+
+    if (maxMessages) {
+      progressBar.start(maxMessages, 0);
+    }
+
+    while (true) {
+      // Find messages in search results
+      const messages = await this.findUserMessages();
+
+      if (messages.length === 0) {
+        consecutiveNoMessages++;
+        if (consecutiveNoMessages >= maxConsecutiveNoMessages) {
+          console.log('\n✅ No more messages found in search results. Stopping...');
+          break;
+        }
+        
+        // Scroll down to load more search results
+        await this.page.evaluate(() => {
+          const results = document.querySelector('[class*="searchResultsWrap-"]');
+          if (results) {
+            results.scrollTop = results.scrollHeight;
+          }
+        });
+        await this.page.waitForTimeout(2000);
+        continue;
+      }
+
+      consecutiveNoMessages = 0; // Reset counter
+
+      // Process each message
+      for (const { element, id } of messages) {
+        const success = await this.wipeAndDeleteMessage(element, id);
+        if (success) {
+          totalProcessed++;
+          if (maxMessages) {
+            progressBar.update(totalProcessed);
+            if (totalProcessed >= maxMessages) {
+              progressBar.stop();
+              console.log(`\n✅ Reached limit of ${maxMessages} messages.`);
+              return totalProcessed;
+            }
+          }
+        }
+      }
+
+      // Scroll down for more search results
+      await this.page.evaluate(() => {
+        const results = document.querySelector('[class*="searchResultsWrap-"]');
+        if (results) {
+          results.scrollTop = results.scrollHeight;
+        }
+      });
+      await this.page.waitForTimeout(2000);
+    }
+
+    if (maxMessages) {
+      progressBar.stop();
+    }
+
+    return totalProcessed;
+  }
+
   async findUserMessages() {
     // Find all message elements
     const messages = await this.page.$$('[class*="message-"]');
@@ -294,6 +401,18 @@ class DiscordMessageWiper {
       description: 'Discord channel URL to process',
       default: ''
     })
+    .option('server', {
+      alias: 's',
+      type: 'string',
+      description: 'Discord server URL to search all messages',
+      default: ''
+    })
+    .option('username', {
+      alias: 'u',
+      type: 'string',
+      description: 'Discord username for search (required with --server)',
+      default: ''
+    })
     .option('limit', {
       alias: 'l',
       type: 'number',
@@ -311,6 +430,7 @@ class DiscordMessageWiper {
     .example('$0 --auto', 'Delete all messages without prompts')
     .example('$0 --auto --limit 100', 'Delete first 100 messages')
     .example('$0 --auto --channel "https://discord.com/channels/..."', 'Delete messages in specific channel')
+    .example('$0 --auto --server "https://discord.com/channels/..." --username "yourname"', 'Delete all messages in server via search')
     .argv;
 
   const wiper = new DiscordMessageWiper();
@@ -320,20 +440,54 @@ class DiscordMessageWiper {
     await wiper.waitForLogin();
 
     let channelUrl = argv.channel;
+    let serverUrl = argv.server;
+    let username = argv.username;
     let limit = argv.limit;
     let confirmed = argv.auto;
+    let useSearch = false;
 
     // Interactive mode (prompts)
     if (!argv.auto) {
-      // Prompt for server/channel URL
-      const response = await prompts({
-        type: 'text',
-        name: 'channelUrl',
-        message: 'Enter Discord channel URL (or press Enter to use current page):',
-        initial: ''
+      // Prompt for mode selection
+      const modeResponse = await prompts({
+        type: 'select',
+        name: 'mode',
+        message: 'Select purge mode:',
+        choices: [
+          { title: 'Single Channel (iterate through messages)', value: 'channel' },
+          { title: 'Server Search (find all your messages via search)', value: 'search' }
+        ],
+        initial: 1
       });
 
-      channelUrl = response.channelUrl;
+      useSearch = modeResponse.mode === 'search';
+
+      if (useSearch) {
+        // Prompt for server URL
+        const serverResponse = await prompts({
+          type: 'text',
+          name: 'serverUrl',
+          message: 'Enter Discord server URL (any channel in the server):',
+        });
+        serverUrl = serverResponse.serverUrl;
+
+        // Prompt for username
+        const usernameResponse = await prompts({
+          type: 'text',
+          name: 'username',
+          message: 'Enter your Discord username (for search query):',
+        });
+        username = usernameResponse.username;
+      } else {
+        // Prompt for channel URL
+        const response = await prompts({
+          type: 'text',
+          name: 'channelUrl',
+          message: 'Enter Discord channel URL (or press Enter to use current page):',
+          initial: ''
+        });
+        channelUrl = response.channelUrl;
+      }
 
       // Ask for message limit
       const limitResponse = await prompts({
@@ -355,8 +509,18 @@ class DiscordMessageWiper {
 
       confirmed = confirmResponse.confirm;
     } else {
+      // Auto mode - determine if using search mode
+      useSearch = Boolean(serverUrl && username);
+      
       console.log('🤖 Running in AUTO mode (non-interactive)');
-      console.log(`   Channel: ${channelUrl || 'current page'}`);
+      if (useSearch) {
+        console.log(`   Mode: Server Search`);
+        console.log(`   Server: ${serverUrl}`);
+        console.log(`   Username: ${username}`);
+      } else {
+        console.log(`   Mode: Channel Iteration`);
+        console.log(`   Channel: ${channelUrl || 'current page'}`);
+      }
       console.log(`   Limit: ${limit === 0 ? 'unlimited' : limit}`);
       console.log('   ⚠️  Starting in 3 seconds...\n');
       await wiper.page.waitForTimeout(3000);
@@ -368,14 +532,28 @@ class DiscordMessageWiper {
       return;
     }
 
-    // Navigate to channel if provided
-    if (channelUrl && channelUrl.trim()) {
-      await wiper.navigateToServer(channelUrl.trim());
-    }
-
-    // Start processing
+    let total = 0;
     const finalLimit = limit > 0 ? limit : null;
-    const total = await wiper.processChannel(finalLimit);
+
+    if (useSearch) {
+      // Validate required parameters
+      if (!serverUrl || !username) {
+        console.error('❌ Error: --server and --username are required for search mode');
+        await wiper.cleanup();
+        process.exit(1);
+      }
+
+      // Search-based mode
+      await wiper.openSearchInServer(serverUrl);
+      await wiper.searchForUserMessages(username);
+      total = await wiper.processSearchResults(finalLimit);
+    } else {
+      // Channel iteration mode
+      if (channelUrl && channelUrl.trim()) {
+        await wiper.navigateToServer(channelUrl.trim());
+      }
+      total = await wiper.processChannel(finalLimit);
+    }
     
     console.log(`\n✅ Complete! Processed ${total} messages.`);
     
