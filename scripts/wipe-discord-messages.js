@@ -146,74 +146,84 @@ class DiscordMessageWiper {
     console.log('\n🔍 Processing search results...\n');
     
     let totalProcessed = 0;
-    let consecutiveNoMessages = 0;
-    const maxConsecutiveNoMessages = 3;
+    let consecutiveNoResults = 0;
+    const maxConsecutiveNoResults = 3;
 
     const progressBar = new cliProgress.SingleBar({
-      format: 'Progress |{bar}| {value}/{total} messages wiped & deleted',
+      format: 'Progress |{bar}| {value} messages wiped & deleted',
       barCompleteChar: '\u2588',
       barIncompleteChar: '\u2591',
       hideCursor: true
     });
 
-    if (maxMessages) {
-      progressBar.start(maxMessages, 0);
-    }
+    progressBar.start(maxMessages || 100, 0);
 
     while (true) {
-      // Find messages in search results
-      const messages = await this.findUserMessages();
+      // Find search result items (clickable items in search panel)
+      const searchResults = await this.page.$$('[class*="searchResult-"]');
 
-      if (messages.length === 0) {
-        consecutiveNoMessages++;
-        if (consecutiveNoMessages >= maxConsecutiveNoMessages) {
-          console.log('\n✅ No more messages found in search results. Stopping...');
+      if (searchResults.length === 0) {
+        consecutiveNoResults++;
+        if (consecutiveNoResults >= maxConsecutiveNoResults) {
+          console.log('\n✅ No more search results found. Stopping...');
           break;
         }
         
-        // Scroll down to load more search results
+        // Scroll search panel to load more results
         await this.page.evaluate(() => {
-          const results = document.querySelector('[class*="searchResultsWrap-"]');
-          if (results) {
-            results.scrollTop = results.scrollHeight;
+          const resultsPanel = document.querySelector('[class*="searchResultsWrap-"]');
+          if (resultsPanel) {
+            resultsPanel.scrollTop = resultsPanel.scrollHeight;
           }
         });
         await this.page.waitForTimeout(2000);
         continue;
       }
 
-      consecutiveNoMessages = 0; // Reset counter
+      consecutiveNoResults = 0;
 
-      // Process each message
-      for (const { element, id } of messages) {
-        const success = await this.wipeAndDeleteMessage(element, id);
-        if (success) {
-          totalProcessed++;
-          if (maxMessages) {
+      // Process first search result
+      const firstResult = searchResults[0];
+      
+      try {
+        // Click the search result to jump to the message
+        await firstResult.click();
+        await this.page.waitForTimeout(1500); // Wait for navigation to message
+        
+        // Now find and process the message in the channel
+        const messages = await this.findUserMessages();
+        
+        if (messages.length > 0) {
+          // Process the first visible message (should be the one we jumped to)
+          const { element, id } = messages[0];
+          const success = await this.wipeAndDeleteMessage(element, id);
+          
+          if (success) {
+            totalProcessed++;
             progressBar.update(totalProcessed);
-            if (totalProcessed >= maxMessages) {
+            
+            if (maxMessages && totalProcessed >= maxMessages) {
               progressBar.stop();
               console.log(`\n✅ Reached limit of ${maxMessages} messages.`);
               return totalProcessed;
             }
           }
         }
+        
+        // Go back to search (Ctrl/Cmd+F)
+        const isMac = process.platform === 'darwin';
+        await this.page.keyboard.down(isMac ? 'Meta' : 'Control');
+        await this.page.keyboard.press('F');
+        await this.page.keyboard.up(isMac ? 'Meta' : 'Control');
+        await this.page.waitForTimeout(1000);
+        
+      } catch (err) {
+        console.error(`❌ Error processing search result:`, err.message);
+        // Continue to next result
       }
-
-      // Scroll down for more search results
-      await this.page.evaluate(() => {
-        const results = document.querySelector('[class*="searchResultsWrap-"]');
-        if (results) {
-          results.scrollTop = results.scrollHeight;
-        }
-      });
-      await this.page.waitForTimeout(2000);
     }
 
-    if (maxMessages) {
-      progressBar.stop();
-    }
-
+    progressBar.stop();
     return totalProcessed;
   }
 
