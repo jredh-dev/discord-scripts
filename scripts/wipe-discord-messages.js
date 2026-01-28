@@ -110,6 +110,52 @@ class DiscordMessageWiper {
     await this.page.waitForTimeout(2000);
   }
 
+  async getAllChannelsFromServer(serverUrl) {
+    console.log('🔍 Finding all channels in server...');
+    await this.navigateToServer(serverUrl);
+    
+    // Extract server ID from URL
+    const match = serverUrl.match(/channels\/(\d+)/);
+    if (!match) {
+      throw new Error('Invalid server URL format');
+    }
+    const serverId = match[1];
+    
+    // Get all channel links in the sidebar
+    const channels = await this.page.evaluate((serverId) => {
+      const channelLinks = Array.from(document.querySelectorAll('a[href*="/channels/"]'));
+      return channelLinks
+        .map(link => link.href)
+        .filter(href => href.includes(`/channels/${serverId}/`))
+        .filter((href, index, self) => self.indexOf(href) === index); // Unique only
+    }, serverId);
+    
+    console.log(`   Found ${channels.length} channels`);
+    return channels;
+  }
+
+  async processServer(serverUrl, maxMessagesPerChannel = null) {
+    console.log('\n🏢 Processing entire server...\n');
+    
+    const channels = await this.getAllChannelsFromServer(serverUrl);
+    let totalProcessed = 0;
+    
+    for (let i = 0; i < channels.length; i++) {
+      const channel = channels[i];
+      console.log(`\n📝 Channel ${i + 1}/${channels.length}: ${channel}`);
+      
+      await this.navigateToServer(channel);
+      this.processedMessages.clear(); // Reset for new channel
+      
+      const processed = await this.processChannel(maxMessagesPerChannel);
+      totalProcessed += processed;
+      
+      console.log(`   ✅ Processed ${processed} messages in this channel`);
+    }
+    
+    return totalProcessed;
+  }
+
   async findUserMessages() {
     // Find all message elements
     const messages = await this.page.$$('[class*="message-"]');
@@ -294,10 +340,16 @@ class DiscordMessageWiper {
       description: 'Discord channel URL to process',
       default: ''
     })
+    .option('server', {
+      alias: 's',
+      type: 'string',
+      description: 'Discord server URL - processes ALL channels in server',
+      default: ''
+    })
     .option('limit', {
       alias: 'l',
       type: 'number',
-      description: 'Maximum messages to delete (0 for unlimited)',
+      description: 'Maximum messages to delete per channel (0 for unlimited)',
       default: 0
     })
     .option('keep-open', {
@@ -311,6 +363,7 @@ class DiscordMessageWiper {
     .example('$0 --auto', 'Delete all messages without prompts')
     .example('$0 --auto --limit 100', 'Delete first 100 messages')
     .example('$0 --auto --channel "https://discord.com/channels/..."', 'Delete messages in specific channel')
+    .example('$0 --auto --server "https://discord.com/channels/123456/..."', 'Delete messages from ALL channels in server')
     .argv;
 
   const wiper = new DiscordMessageWiper();
@@ -320,26 +373,49 @@ class DiscordMessageWiper {
     await wiper.waitForLogin();
 
     let channelUrl = argv.channel;
+    let serverUrl = argv.server;
     let limit = argv.limit;
     let confirmed = argv.auto;
+    let isServerMode = false;
 
     // Interactive mode (prompts)
     if (!argv.auto) {
+      // Prompt for mode
+      const modeResponse = await prompts({
+        type: 'select',
+        name: 'mode',
+        message: 'What do you want to purge?',
+        choices: [
+          { title: 'Single channel', value: 'channel' },
+          { title: 'Entire server (all channels)', value: 'server' }
+        ]
+      });
+
+      isServerMode = modeResponse.mode === 'server';
+
       // Prompt for server/channel URL
       const response = await prompts({
         type: 'text',
-        name: 'channelUrl',
-        message: 'Enter Discord channel URL (or press Enter to use current page):',
+        name: 'url',
+        message: isServerMode 
+          ? 'Enter Discord server URL (any channel in the server):'
+          : 'Enter Discord channel URL (or press Enter to use current page):',
         initial: ''
       });
 
-      channelUrl = response.channelUrl;
+      if (isServerMode) {
+        serverUrl = response.url;
+      } else {
+        channelUrl = response.url;
+      }
 
       // Ask for message limit
       const limitResponse = await prompts({
         type: 'number',
         name: 'limit',
-        message: 'Max messages to delete (0 for unlimited):',
+        message: isServerMode 
+          ? 'Max messages to delete per channel (0 for unlimited):'
+          : 'Max messages to delete (0 for unlimited):',
         initial: 0
       });
 
@@ -349,15 +425,19 @@ class DiscordMessageWiper {
       const confirmResponse = await prompts({
         type: 'confirm',
         name: 'confirm',
-        message: '⚠️  This will WIPE and DELETE your messages. Continue?',
+        message: isServerMode
+          ? '⚠️  This will WIPE and DELETE your messages from ALL channels in the server. Continue?'
+          : '⚠️  This will WIPE and DELETE your messages. Continue?',
         initial: false
       });
 
       confirmed = confirmResponse.confirm;
     } else {
+      isServerMode = !!serverUrl;
       console.log('🤖 Running in AUTO mode (non-interactive)');
-      console.log(`   Channel: ${channelUrl || 'current page'}`);
-      console.log(`   Limit: ${limit === 0 ? 'unlimited' : limit}`);
+      console.log(`   Mode: ${isServerMode ? 'Server (all channels)' : 'Single channel'}`);
+      console.log(`   Target: ${serverUrl || channelUrl || 'current page'}`);
+      console.log(`   Limit: ${limit === 0 ? 'unlimited' : limit} messages per channel`);
       console.log('   ⚠️  Starting in 3 seconds...\n');
       await wiper.page.waitForTimeout(3000);
     }
@@ -368,16 +448,22 @@ class DiscordMessageWiper {
       return;
     }
 
-    // Navigate to channel if provided
-    if (channelUrl && channelUrl.trim()) {
-      await wiper.navigateToServer(channelUrl.trim());
-    }
-
     // Start processing
     const finalLimit = limit > 0 ? limit : null;
-    const total = await wiper.processChannel(finalLimit);
+    let total;
+
+    if (isServerMode && serverUrl) {
+      // Process entire server
+      total = await wiper.processServer(serverUrl, finalLimit);
+    } else {
+      // Process single channel
+      if (channelUrl && channelUrl.trim()) {
+        await wiper.navigateToServer(channelUrl.trim());
+      }
+      total = await wiper.processChannel(finalLimit);
+    }
     
-    console.log(`\n✅ Complete! Processed ${total} messages.`);
+    console.log(`\n✅ Complete! Processed ${total} messages total.`);
     
     if (argv.keepOpen) {
       console.log('🔒 Browser will remain open (use --no-keep-open to auto-close)...\n');
