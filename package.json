@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "wipe-messages": "node scripts/wipe-discord-messages.js",
-    "wipe-auto": "node scripts/wipe-discord-messages.js --auto"
+    "wipe-auto": "node scripts/wipe-discord-messages.js --auto",
+    "wipe-server": "node scripts/wipe-discord-messages.js --auto --server"
   },
   "keywords": ["discord", "privacy", "automation", "puppeteer"],
   "author": "",
